@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
+#include <Arduino.h>
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/irq.h"
@@ -39,6 +39,7 @@ void WavPwmInit(unsigned char GpioPinChannelA)
    // gpio_set_function(GpioPinChannelA + 1, GPIO_FUNC_PWM);
    
    PwmSliceNum = pwm_gpio_to_slice_num(GpioPinChannelA);
+   // pwm_set_wrap(PwmSliceNum, WAV_PWM_COUNT);
    pwm_set_wrap(PwmSliceNum, WAV_PWM_COUNT);
    pwm_set_chan_level(PwmSliceNum, PWM_CHAN_A, 0);
 
@@ -56,8 +57,12 @@ unsigned char WavPwmIsPlaying()
 
 void WavPwmStopAudio()
 {
-   if (WavPwmDmaCh && dma_channel_is_busy(WavPwmDmaCh))
+   if (dma_channel_is_busy(WavPwmDmaCh)) {
       dma_channel_abort(WavPwmDmaCh);
+      pwm_set_chan_level(PwmSliceNum, PWM_CHAN_A, 0);
+      // pwm_set_chan_level(PwmSliceNum, PWM_CHAN_B, 0);
+      dma_channel_unclaim(WavPwmDmaCh);
+   }
 }
 
 unsigned char WavPwmPlayAudio(const unsigned short WavPwmData[])
@@ -65,10 +70,12 @@ unsigned char WavPwmPlayAudio(const unsigned short WavPwmData[])
    unsigned char Result = false;
    dma_channel_config WavPwmDmaChConfig;
 
-   if (!WavPwmDmaCh)
-      WavPwmDmaCh = dma_claim_unused_channel(true);
-
+   Serial.println(WavPwmDmaCh);
    WavPwmStopAudio();
+   if (dma_channel_is_busy(WavPwmDmaCh)) {
+      WavPwmDmaCh = dma_claim_unused_channel(true);
+   }  
+   Serial.println(WavPwmDmaCh);
 
    if (!dma_channel_is_busy(WavPwmDmaCh))
    {
@@ -80,7 +87,7 @@ unsigned char WavPwmPlayAudio(const unsigned short WavPwmData[])
       channel_config_set_write_increment(&WavPwmDmaChConfig, false);
       channel_config_set_transfer_data_size(&WavPwmDmaChConfig, DMA_SIZE_32);
       channel_config_set_dreq(&WavPwmDmaChConfig, pwm_get_dreq(PwmSliceNum));
-      dma_channel_configure(WavPwmDmaCh, &WavPwmDmaChConfig, (void*)(PWM_BASE + PWM_CH3_CC_OFFSET), &(WavPwmData[2]), (WavPwmData[0] + (65536 * WavPwmData[1])) / 2, false);
+      dma_channel_configure(WavPwmDmaCh, &WavPwmDmaChConfig, (void*)(PWM_BASE + PWM_CH0_CC_OFFSET+PwmSliceNum*20), &(WavPwmData[2]), (WavPwmData[0] + (65536 * WavPwmData[1])) / 2, false);
 
       dma_hw->ints0 = (1 << WavPwmDmaCh);
       dma_start_channel_mask(1 << WavPwmDmaCh);

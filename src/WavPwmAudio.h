@@ -20,6 +20,10 @@
 
 
 #define WAV_SAMPLE_RATE          22050
+// 44100
+// 8000
+// 11025
+// 22050
 #define WAV_PWM_COUNT            (125000000 / WAV_SAMPLE_RATE)
 
 
