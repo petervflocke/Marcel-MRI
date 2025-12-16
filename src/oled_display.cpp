@@ -23,6 +23,10 @@ constexpr uint8_t kI2cAddress = 0x3C;
 constexpr uint32_t kI2cClockHz = 400000;
 constexpr unsigned long kRenderIntervalMs = 250;
 constexpr int kMenuLineHeight = 10;
+constexpr int kMenuTitleSeparatorY = 10;
+constexpr int kMenuContentStartY = 14;
+constexpr int kMenuHelpAreaHeight = 10;
+constexpr int kMenuHelpTextPadding = 2;
 
 Adafruit_SSD1306 display(kOledWidth, kOledHeight, &Wire, -1);
 
@@ -106,9 +110,15 @@ void OledDisplay::scanBus() {
 }
 
 void OledDisplay::setMenu(const OledMenu& menu) {
+  const bool structure_changed = menu_.items != menu.items ||
+                                 menu_.item_count != menu.item_count ||
+                                 menu_.title != menu.title;
   menu_ = menu;
   if (menu_.item_count > 0 && menu_.selected_index >= menu_.item_count) {
     menu_.selected_index = menu_.item_count - 1;
+  }
+  if (structure_changed) {
+    menu_scroll_offset_ = 0;
   }
   if (initialized_) {
     render();
@@ -117,6 +127,7 @@ void OledDisplay::setMenu(const OledMenu& menu) {
 
 void OledDisplay::clearMenu() {
   menu_ = {};
+  menu_scroll_offset_ = 0;
   if (initialized_) {
     render();
   }
@@ -155,13 +166,63 @@ void OledDisplay::drawMenu() {
   if (menu_.title) {
     display.setCursor(0, y);
     display.println(menu_.title);
-    display.drawFastHLine(0, 10, kOledWidth, SSD1306_WHITE);
-    y = 14;
+    display.drawFastHLine(0, kMenuTitleSeparatorY, kOledWidth, SSD1306_WHITE);
+    y = kMenuContentStartY;
   }
 
-  for (size_t i = 0; i < menu_.item_count && y < kOledHeight; ++i) {
-    const bool selected = (i == menu_.selected_index);
-    if (selected) {
+  int help_divider_y = kOledHeight - kMenuHelpAreaHeight;
+  if (help_divider_y < 0) {
+    help_divider_y = 0;
+  } else if (help_divider_y > kOledHeight) {
+    help_divider_y = kOledHeight;
+  }
+  display.drawFastHLine(0, help_divider_y, kOledWidth, SSD1306_WHITE);
+  int help_text_y = help_divider_y + kMenuHelpTextPadding;
+  if (help_text_y >= kOledHeight) {
+    help_text_y = kOledHeight - 1;
+  }
+  display.setCursor(0, help_text_y);
+  display.setTextColor(SSD1306_WHITE);
+  display.print(F("L:scroll  R:enter"));
+
+  const int menu_area_height = help_divider_y - y;
+  if (menu_.item_count == 0 || menu_area_height <= 0) {
+    return;
+  }
+
+  const size_t visible_items =
+      static_cast<size_t>(menu_area_height / kMenuLineHeight);
+  if (visible_items == 0) {
+    return;
+  }
+
+  const size_t item_count = menu_.item_count;
+  size_t first_visible = menu_scroll_offset_;
+  if (first_visible >= item_count) {
+    first_visible = 0;
+  }
+  const size_t max_first =
+      (item_count > visible_items) ? (item_count - visible_items) : 0;
+  if (first_visible > max_first) {
+    first_visible = max_first;
+  }
+
+  const size_t selected = menu_.selected_index;
+  if (selected < first_visible) {
+    first_visible = selected;
+  } else if (selected >= first_visible + visible_items) {
+    first_visible = selected - visible_items + 1;
+  }
+  menu_scroll_offset_ = first_visible;
+
+  size_t last_index = first_visible + visible_items;
+  if (last_index > item_count) {
+    last_index = item_count;
+  }
+
+  for (size_t i = first_visible; i < last_index; ++i) {
+    const bool selected_item = (i == selected);
+    if (selected_item) {
       display.fillRect(0, y - 1, kOledWidth, kMenuLineHeight, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     } else {
@@ -169,7 +230,8 @@ void OledDisplay::drawMenu() {
     }
 
     display.setCursor(2, y);
-    const char* label = menu_.items[i] ? menu_.items[i] : "";
+    const char* label =
+        (menu_.items && menu_.items[i]) ? menu_.items[i] : "";
     display.println(label);
     y += kMenuLineHeight;
   }

@@ -28,4 +28,5 @@ class OledDisplay {
   bool init_attempted_ = false;
   unsigned long last_render_ms_ = 0;
   OledMenu menu_;
+  size_t menu_scroll_offset_ = 0;
 };
