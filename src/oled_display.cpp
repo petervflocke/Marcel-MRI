@@ -1,0 +1,178 @@
+#include "oled_display.h"
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+namespace {
+
+#ifndef OLED_SDA_PIN
+#define OLED_SDA_PIN 4
+#endif
+
+#ifndef OLED_SCL_PIN
+#define OLED_SCL_PIN 5
+#endif
+
+constexpr int kOledWidth = 128;
+constexpr int kOledHeight = 64;
+constexpr int kSdaPin = OLED_SDA_PIN;
+constexpr int kSclPin = OLED_SCL_PIN;
+constexpr uint8_t kI2cAddress = 0x3C;
+constexpr uint32_t kI2cClockHz = 400000;
+constexpr unsigned long kRenderIntervalMs = 250;
+constexpr int kMenuLineHeight = 10;
+
+Adafruit_SSD1306 display(kOledWidth, kOledHeight, &Wire, -1);
+
+}  // namespace
+
+void OledDisplay::configureBus() {
+  Wire.setSDA(kSdaPin);
+  Wire.setSCL(kSclPin);
+  Wire.begin();
+  Wire.setClock(kI2cClockHz);
+}
+
+void OledDisplay::begin() {
+  if (initialized_) {
+    return;
+  }
+  init_attempted_ = true;
+
+  Serial.println(F("[OLED] Initializing"));
+  configureBus();
+  Serial.print(F("[OLED] I2C configured at "));
+  Serial.print(kI2cClockHz / 1000);
+  Serial.println(F("kHz"));
+
+  delay(20);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, kI2cAddress)) {
+    Serial.println(F("[OLED] display.begin failed"));
+    init_attempted_ = false;
+    return;
+  }
+
+  display.setTextWrap(false);
+  Serial.println(F("[OLED] display.begin OK"));
+  initialized_ = true;
+  render();
+}
+
+void OledDisplay::loop() {
+  if (!initialized_ && !init_attempted_) {
+    begin();
+  }
+
+  if (!initialized_) {
+    return;
+  }
+
+  if (millis() - last_render_ms_ >= kRenderIntervalMs) {
+    render();
+  }
+}
+
+void OledDisplay::scanBus() {
+  Serial.println(F("[I2C] Scanning bus"));
+  configureBus();
+  Serial.print(F("[I2C] Using SDA="));
+  Serial.print(kSdaPin);
+  Serial.print(F(" SCL="));
+  Serial.println(kSclPin);
+
+  uint8_t found = 0;
+  for (uint8_t address = 0x00; address <= 0x7F; ++address) {
+    Wire.beginTransmission(address);
+    uint8_t error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.print(F("[I2C] Found device at 0x"));
+      Serial.println(address, HEX);
+      ++found;
+    } else if (error == 4) {
+      Serial.print(F("[I2C] Unknown error at 0x"));
+      Serial.println(address, HEX);
+    }
+    delay(5);
+  }
+
+  if (found == 0) {
+    Serial.println(F("[I2C] No devices found"));
+  } else {
+    Serial.print(F("[I2C] Devices detected: "));
+    Serial.println(found);
+  }
+}
+
+void OledDisplay::setMenu(const OledMenu& menu) {
+  menu_ = menu;
+  if (menu_.item_count > 0 && menu_.selected_index >= menu_.item_count) {
+    menu_.selected_index = menu_.item_count - 1;
+  }
+  if (initialized_) {
+    render();
+  }
+}
+
+void OledDisplay::clearMenu() {
+  menu_ = {};
+  if (initialized_) {
+    render();
+  }
+}
+
+void OledDisplay::render() {
+  if (!initialized_) {
+    return;
+  }
+
+  display.clearDisplay();
+  if (menu_.items && menu_.item_count > 0) {
+    drawMenu();
+  } else {
+    drawSplash();
+  }
+  display.display();
+  last_render_ms_ = millis();
+}
+
+void OledDisplay::drawSplash() {
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println(F("READY"));
+  display.setTextSize(1);
+  display.println(F("OLED online"));
+  display.println(F("Waiting menu"));
+}
+
+void OledDisplay::drawMenu() {
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  int y = 0;
+  if (menu_.title) {
+    display.setCursor(0, y);
+    display.println(menu_.title);
+    display.drawFastHLine(0, 10, kOledWidth, SSD1306_WHITE);
+    y = 14;
+  }
+
+  for (size_t i = 0; i < menu_.item_count && y < kOledHeight; ++i) {
+    const bool selected = (i == menu_.selected_index);
+    if (selected) {
+      display.fillRect(0, y - 1, kOledWidth, kMenuLineHeight, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    } else {
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(2, y);
+    const char* label = menu_.items[i] ? menu_.items[i] : "";
+    display.println(label);
+    y += kMenuLineHeight;
+  }
+
+  display.setTextColor(SSD1306_WHITE);
+}
