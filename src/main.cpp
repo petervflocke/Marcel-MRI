@@ -6,6 +6,7 @@
 
 constexpr uint8_t ButDown = 14;
 constexpr uint8_t ButEnter = 13;
+constexpr uint8_t LedAlarmPin = 12;
 constexpr unsigned long kDisplayUpdateIntervalMs = 25;
 constexpr unsigned long kButtonDebounceMs = 100;
 constexpr float kPi = 3.1415926535f;
@@ -44,11 +45,16 @@ gandalf_WAV // 15
 };
 #endif
 
-constexpr uint8_t kDiagnosticClipIndexes[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 11, 12, 12, 13, 13};
-constexpr uint8_t kFirstTryClipIndexes[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-constexpr uint8_t kSecondTryClipIndexes[] = {0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 10};
-constexpr uint8_t kDontTryClipIndexes[] = {7, 8, 4, 4, 10, 10, 10, 14, 14, 14, 14, 0, 15, 0, 15, 0};
-constexpr uint8_t kRelaxClipIndexes[] = {14,14,14,14,14,14,15,15,15,15,15,15};
+constexpr uint8_t kDiagnosticClipIndexes[] = {
+  0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 11, 12, 12, 13, 13};
+constexpr uint8_t kFirstTryClipIndexes[] = {
+  7, 5, 6, 6, 6, 12, 13, 13, 13, 8};
+constexpr uint8_t kSecondTryClipIndexes[] = {
+  0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 10};
+constexpr uint8_t kDontTryClipIndexes[] = {
+  12, 13, 11, 10, 4, 10, 4, 10, 14, 14, 14, 0, 15, 0, 15, 0};
+constexpr uint8_t kRelaxClipIndexes[] = {
+  14,14,14,14,14,14,15,15,15,15,15,15};
 
 
 constexpr size_t kWavCount = sizeof(kWavs) / sizeof(kWavs[0]);
@@ -401,6 +407,222 @@ const SequenceVisuals kSecondTryVisuals{
   SecondTryImageStop,
 };
 
+constexpr unsigned long kDontTryStripeIntervalMs = 510;
+constexpr int kDontTryImageWidthPx = 64;
+constexpr int kDontTryImageHeightPx = 64;
+constexpr int kDontTryStripeHeightPx = 4;
+constexpr size_t kDontTryStripeCount =
+    kDontTryImageHeightPx / kDontTryStripeHeightPx;
+constexpr size_t kDontTryStripeCutoff = kDontTryStripeCount / 2;
+constexpr size_t kDontTryBytesPerRow =
+    (kDontTryImageWidthPx + 7) / 8;
+constexpr unsigned long kDontTryFlashIntervalMs = 250;
+constexpr unsigned long kDontTryPostScanDelayMs = 4500;
+constexpr unsigned long kDontTryLedFlashIntervalMs = 100;
+constexpr unsigned long kDontTryLedFlashDurationMs = 6000;
+constexpr unsigned long kDontTryFlashDurationMs = 4000;
+constexpr unsigned long kDontTryFinalDisplayDurationMs = 3000;
+
+enum class DontTryPhase : uint8_t {
+  Loading,
+  PreAlarmPause,
+  AlarmFlash,
+  FinalMessage,
+};
+
+struct DontTryVisualState {
+  DontTryPhase phase = DontTryPhase::Loading;
+  size_t stripes_revealed = 0;
+  unsigned long last_step_ms = 0;
+  unsigned long phase_start_ms = 0;
+  bool flash_on = true;
+  unsigned long led_last_toggle_ms = 0;
+  bool led_on = false;
+};
+
+DontTryVisualState g_dontTryVisualState;
+
+const unsigned char* const kDontTryBitmap = epd_bitmap_br02;
+
+int16_t MeasureTextWidth(const char* text, uint8_t size) {
+  if (!text) {
+    return 0;
+  }
+  const size_t len = strlen(text);
+  return static_cast<int16_t>(len * 6 * size);
+}
+
+int16_t MeasureLineHeight(uint8_t size) {
+  return static_cast<int16_t>(8 * size);
+}
+
+void DrawCenteredLines(Adafruit_SSD1306& display,
+                       const char* const* lines,
+                       size_t line_count,
+                       uint8_t size) {
+  if (!lines || line_count == 0) {
+    return;
+  }
+  const int16_t line_height = MeasureLineHeight(size);
+  const int16_t total_height =
+      static_cast<int16_t>(line_count) * line_height;
+  int16_t y = (display.height() - total_height) / 2;
+  display.setTextSize(size);
+  display.setTextColor(SSD1306_WHITE);
+  for (size_t i = 0; i < line_count; ++i) {
+    const char* text = lines[i] ? lines[i] : "";
+    const int16_t text_width = MeasureTextWidth(text, size);
+    int16_t x = (display.width() - text_width) / 2;
+    if (x < 0) {
+      x = 0;
+    }
+    display.setCursor(x, y);
+    display.print(text);
+    y += line_height;
+  }
+}
+
+void DontTryRenderLoading(Adafruit_SSD1306& display,
+                          DontTryVisualState& state,
+                          unsigned long now) {
+  if ((now - state.last_step_ms) >= kDontTryStripeIntervalMs &&
+      state.stripes_revealed < kDontTryStripeCutoff) {
+    state.last_step_ms = now;
+    state.stripes_revealed++;
+    if (state.stripes_revealed >= kDontTryStripeCutoff) {
+      state.phase = DontTryPhase::PreAlarmPause;
+      state.phase_start_ms = now;
+      display.clearDisplay();
+      return;
+    }
+  }
+
+  display.clearDisplay();
+  const int origin_x = (display.width() - kDontTryImageWidthPx) / 2;
+  const int origin_y = (display.height() - kDontTryImageHeightPx) / 2;
+  const size_t stripes_to_draw = state.stripes_revealed;
+  for (size_t stripe = 0; stripe < stripes_to_draw; ++stripe) {
+    const size_t offset =
+        stripe * kDontTryStripeHeightPx * kDontTryBytesPerRow;
+    display.drawBitmap(origin_x,
+                       origin_y +
+                           static_cast<int>(stripe * kDontTryStripeHeightPx),
+                       kDontTryBitmap + offset,
+                       kDontTryImageWidthPx,
+                       kDontTryStripeHeightPx,
+                       SSD1306_WHITE);
+  }
+}
+
+void DontTryRenderPreAlarmPause(Adafruit_SSD1306& display,
+                                DontTryVisualState& state,
+                                unsigned long now) {
+  display.clearDisplay();
+  const int origin_x = (display.width() - kDontTryImageWidthPx) / 2;
+  const int origin_y = (display.height() - kDontTryImageHeightPx) / 2;
+  for (size_t stripe = 0; stripe < kDontTryStripeCutoff; ++stripe) {
+    const size_t offset =
+        stripe * kDontTryStripeHeightPx * kDontTryBytesPerRow;
+    display.drawBitmap(origin_x,
+                       origin_y +
+                           static_cast<int>(stripe * kDontTryStripeHeightPx),
+                       kDontTryBitmap + offset,
+                       kDontTryImageWidthPx,
+                       kDontTryStripeHeightPx,
+                       SSD1306_WHITE);
+  }
+
+  if ((now - state.phase_start_ms) >= kDontTryPostScanDelayMs) {
+    state.phase = DontTryPhase::AlarmFlash;
+    state.phase_start_ms = now;
+    state.last_step_ms = now;
+    state.flash_on = true;
+    state.led_on = true;
+    state.led_last_toggle_ms = now;
+    digitalWrite(LedAlarmPin, HIGH);
+  }
+}
+
+void DontTryRenderAlarm(Adafruit_SSD1306& display,
+                        DontTryVisualState& state,
+                        unsigned long now) {
+  if ((now - state.last_step_ms) >= kDontTryFlashIntervalMs) {
+    state.last_step_ms = now;
+    state.flash_on = !state.flash_on;
+  }
+
+  if (state.led_on) {
+    if ((now - state.led_last_toggle_ms) >= kDontTryLedFlashIntervalMs) {
+      state.led_last_toggle_ms = now;
+      digitalWrite(LedAlarmPin, !state.flash_on);
+    }
+    if ((now - state.phase_start_ms) >= kDontTryLedFlashDurationMs) {
+      state.led_on = false;
+      digitalWrite(LedAlarmPin, LOW);
+    }
+  }
+
+  display.clearDisplay();
+  if (state.flash_on) {
+    static const char* const kAlarmLines[] = {"ALARM", "FIRE"};
+    DrawCenteredLines(display, kAlarmLines, 2, 2);
+  }
+
+  if ((now - state.phase_start_ms) >= kDontTryFlashDurationMs) {
+    state.phase = DontTryPhase::FinalMessage;
+    state.phase_start_ms = now;
+  }
+}
+
+void DontTryRenderFinal(Adafruit_SSD1306& display,
+                        DontTryVisualState& state,
+                        unsigned long now) {
+  display.clearDisplay();
+  static const char* const kFinalLines[] = {"Fly you", "fools"};
+  DrawCenteredLines(display, kFinalLines, 2, 2);
+  if ((now - state.phase_start_ms) >= kDontTryFinalDisplayDurationMs) {
+    // Placeholder: could loop or stop visuals.
+  }
+}
+
+void DontTryRender(Adafruit_SSD1306& display, void* context) {
+  auto* state = static_cast<DontTryVisualState*>(context);
+  const unsigned long now = millis();
+  switch (state->phase) {
+    case DontTryPhase::Loading:
+      DontTryRenderLoading(display, *state, now);
+      break;
+    case DontTryPhase::PreAlarmPause:
+      DontTryRenderPreAlarmPause(display, *state, now);
+      break;
+    case DontTryPhase::AlarmFlash:
+      DontTryRenderAlarm(display, *state, now);
+      break;
+    case DontTryPhase::FinalMessage:
+      DontTryRenderFinal(display, *state, now);
+      break;
+  }
+}
+
+void DontTryStart() {
+  g_dontTryVisualState = {};
+  g_dontTryVisualState.phase = DontTryPhase::Loading;
+  g_dontTryVisualState.last_step_ms = millis();
+  g_dontTryVisualState.phase_start_ms = g_dontTryVisualState.last_step_ms;
+  g_oledDisplay.clearMenu();
+  g_oledDisplay.setCustomRenderer(DontTryRender, &g_dontTryVisualState);
+}
+
+void DontTryStop() {
+  digitalWrite(LedAlarmPin, LOW);
+  g_oledDisplay.clearCustomRenderer();
+}
+
+const SequenceVisuals kDontTryVisuals{
+  DontTryStart,
+  DontTryStop,
+};
+
 const AudioSequence kDiagnosticSequence{
   "Diagnostics",
   kDiagnosticClipIndexes,
@@ -425,7 +647,8 @@ const AudioSequence kSecondTrySequence{
 const AudioSequence kDontTrySequence{
   "Don't try",
   kDontTryClipIndexes,
-  sizeof(kDontTryClipIndexes) / sizeof(kDontTryClipIndexes[0])
+  sizeof(kDontTryClipIndexes) / sizeof(kDontTryClipIndexes[0]),
+  &kDontTryVisuals
 };
 
 const AudioSequence kRelaxSequence{
@@ -671,6 +894,8 @@ void setup() {
   Serial.println(F("Starting..."));
   pinMode(ButDown, INPUT_PULLUP);
   pinMode(ButEnter, INPUT_PULLUP);
+  pinMode(LedAlarmPin, OUTPUT);
+  digitalWrite(LedAlarmPin, LOW);
   const bool down_level = gpio_get(ButDown);
   g_buttonDownState.raw_level = down_level;
   g_buttonDownState.stable_level = down_level;
