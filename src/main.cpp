@@ -20,17 +20,20 @@ const unsigned short* const kWavs[] = {
 #else
 #include "WAVData.h"
 const unsigned short* const kWavs[] = {
-  wav2,
-  wav3,
-  wav4,
-  wav5,
-  wav6,
-  wav7,
-  wav8,
-  wav9,
-  wav10,
-  wav11,
-  wav12
+S01_WAV, // 0
+S02_WAV, // 1
+S03_WAV, // 2
+S04_WAV, // 3
+S05_WAV, // 4
+S09_WAV, // 5
+S10_WAV, // 6
+S11_WAV, // 7
+S12_WAV, // 8
+S13_WAV, // 9
+S14_WAV, // 10
+S15_WAV, // 11
+S16_WAV, // 12
+S17_WAV, // 13
 };
 #endif
 
