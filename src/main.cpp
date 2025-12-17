@@ -195,10 +195,11 @@ const SequenceVisuals kDiagnosticVisuals{
 };
 
 constexpr unsigned long kFirstTryDialIntervalMs = 200;
-constexpr float kFirstTryDialStepDeg = 5.f;
-constexpr size_t kFirstTryDialStepCount = 36;
-constexpr int kFirstTryDialRadiusPx = 24;
-constexpr int kFirstTryDialLineExtendPx = 6;
+constexpr float kFirstTryDialStepDeg = 3.0f;
+constexpr size_t kFirstTryDialStepCount =
+    static_cast<size_t>(180.0f / kFirstTryDialStepDeg);
+constexpr int kFirstTryDialRadiusPx = 28;
+constexpr int kFirstTryDialLineExtendPx = 4;
 constexpr int kFirstTryDialLineHalfThicknessPx = 1;
 
 struct FirstTryDialState {
