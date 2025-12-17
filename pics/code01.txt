@@ -1,0 +1,43 @@
+%% Read the Pulseq file
+seq = mr.Sequence();
+seq.read('gre.seq');
+
+seq=mr.Sequence(sys);
+fov=256e-3; Nx=64; 
+thickness=4e-3;
+sliceGap=1e-3;
+Nslices=8;
+
+amp=zeros(3,1);
+gradNames={'gx','gy','gz'};
+for iC=1:3
+grad = block.(gradNames{iC});
+if isGrad(iC) && strcmp(grad.type,'trap')
+ % Trapezoid gradient
+ tRampUp(iC) = grad.riseTime*1e6;
+ tFlat(iC) = grad.flatTime*1e6;
+ tRampDown(iC) = grad.fallTime*1e6;
+ amp(iC) = grad.amplitude*Pulseq_to_Trim;
+end
+
+% correct flip angles
+PVM_RefAttCh1 = 17.092;
+flipRef=pi/2;
+tauRef=1e-3;
+refB1=flipRef/tauRef;
+B1=2*pi*amp;
+
+for i=1:Ny
+ for c=1:length(TE)
+  %seq.addBlock(rf_fs,gz_fs); % fat-sat
+  rf.phaseOffset=rf_phase/180*pi;
+  adc.phaseOffset=rf_phase/180*pi;
+  rf_inc=mod(rf_inc+rfSpoilingInc, 360.0);
+  rf_phase=mod(rf_phase+rf_inc, 360.0);
+  seq.addBlock(rf,gz);
+  seq.addBlock(gxPre,mr.scaleGrad(gyPre,peScales(i)),gzReph);
+  seq.addBlock(mr.makeDelay(delayTE(c)));
+  seq.addBlock(gx,adc);
+  seq.addBlock(mr.makeDelay(delayTR(c)),gxSpoil,mr.scaleGrad(gyPre,-peScales(i)),gzSpoil)
+ end
+end

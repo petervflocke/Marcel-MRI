@@ -78,6 +78,13 @@ void OledDisplay::loop() {
   }
 }
 
+void OledDisplay::forceRender() {
+  if (!initialized_) {
+    return;
+  }
+  render();
+}
+
 void OledDisplay::scanBus() {
   Serial.println(F("[I2C] Scanning bus"));
   configureBus();
@@ -133,13 +140,36 @@ void OledDisplay::clearMenu() {
   }
 }
 
+void OledDisplay::setCustomRenderer(CustomRenderCallback renderer,
+                                    void* user_context) {
+  custom_renderer_ = renderer;
+  custom_renderer_context_ = user_context;
+  if (initialized_) {
+    render();
+  }
+}
+
+void OledDisplay::clearCustomRenderer() {
+  custom_renderer_ = nullptr;
+  custom_renderer_context_ = nullptr;
+  if (initialized_) {
+    render();
+  }
+}
+
+bool OledDisplay::customRendererActive() const {
+  return custom_renderer_ != nullptr;
+}
+
 void OledDisplay::render() {
   if (!initialized_) {
     return;
   }
 
   display.clearDisplay();
-  if (menu_.items && menu_.item_count > 0) {
+  if (custom_renderer_) {
+    custom_renderer_(display, custom_renderer_context_);
+  } else if (menu_.items && menu_.item_count > 0) {
     drawMenu();
   } else {
     drawSplash();

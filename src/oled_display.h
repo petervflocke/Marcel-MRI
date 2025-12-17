@@ -2,6 +2,8 @@
 
 #include <stddef.h>
 
+class Adafruit_SSD1306;
+
 struct OledMenu {
   const char* title = nullptr;
   const char* const* items = nullptr;
@@ -11,12 +13,19 @@ struct OledMenu {
 
 class OledDisplay {
  public:
+  using CustomRenderCallback = void (*)(Adafruit_SSD1306& display,
+                                        void* user_context);
+
   void begin();
   void loop();
   void scanBus();
+  void forceRender();
 
   void setMenu(const OledMenu& menu);
   void clearMenu();
+  void setCustomRenderer(CustomRenderCallback renderer, void* user_context);
+  void clearCustomRenderer();
+  bool customRendererActive() const;
 
  private:
   void render();
@@ -24,6 +33,8 @@ class OledDisplay {
   void drawMenu();
   void configureBus();
 
+  CustomRenderCallback custom_renderer_ = nullptr;
+  void* custom_renderer_context_ = nullptr;
   bool initialized_ = false;
   bool init_attempted_ = false;
   unsigned long last_render_ms_ = 0;
