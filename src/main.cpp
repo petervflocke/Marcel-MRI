@@ -14,6 +14,7 @@ constexpr float kPi = 3.1415926535f;
 #include <string.h>
 #include "pico/stdlib.h"
 #include "oled_display.h"
+#include "PICsData.h"
 #include "WavPwmAudio.h"
 
 #if defined(USE_WAVDATA2)
@@ -288,6 +289,63 @@ const SequenceVisuals kFirstTryVisuals{
   FirstTryDialStop,
 };
 
+constexpr unsigned long kSecondTryFrameIntervalMs = 400;
+constexpr int kSecondTryImageWidthPx = 62;
+constexpr int kSecondTryImageHeightPx = 64;
+
+const unsigned char* const kSecondTryImages[] = {
+  epd_bitmap_br00,
+  epd_bitmap_br01,
+  epd_bitmap_br02,
+};
+
+constexpr size_t kSecondTryImageCount =
+    sizeof(kSecondTryImages) / sizeof(kSecondTryImages[0]);
+
+struct SecondTryImageState {
+  size_t current_image = 0;
+  unsigned long last_switch_ms = 0;
+};
+
+SecondTryImageState g_secondTryImageState;
+
+void SecondTryImageRender(Adafruit_SSD1306& display, void* context) {
+  auto* state = static_cast<SecondTryImageState*>(context);
+  const unsigned long now = millis();
+  if (kSecondTryImageCount > 0 &&
+      (now - state->last_switch_ms) >= kSecondTryFrameIntervalMs) {
+    state->last_switch_ms = now;
+    state->current_image = (state->current_image + 1) % kSecondTryImageCount;
+  }
+
+  display.fillRect(0, 0, display.width(), display.height(), SSD1306_BLACK);
+  if (kSecondTryImageCount == 0) {
+    return;
+  }
+
+  const int x = (display.width() - kSecondTryImageWidthPx) / 2;
+  const int y = (display.height() - kSecondTryImageHeightPx) / 2;
+  const unsigned char* bitmap = kSecondTryImages[state->current_image];
+  display.drawBitmap(x, y, bitmap, kSecondTryImageWidthPx,
+                     kSecondTryImageHeightPx, SSD1306_WHITE);
+}
+
+void SecondTryImageStart() {
+  g_secondTryImageState.current_image = 0;
+  g_secondTryImageState.last_switch_ms = millis();
+  g_oledDisplay.clearMenu();
+  g_oledDisplay.setCustomRenderer(SecondTryImageRender, &g_secondTryImageState);
+}
+
+void SecondTryImageStop() {
+  g_oledDisplay.clearCustomRenderer();
+}
+
+const SequenceVisuals kSecondTryVisuals{
+  SecondTryImageStart,
+  SecondTryImageStop,
+};
+
 constexpr uint8_t kDiagnosticClipIndexes[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 11, 12, 12, 13, 13};
 constexpr uint8_t kFirstTryClipIndexes[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 constexpr uint8_t kSecondTryClipIndexes[] = {1, 1, 1, 1, 1, 1, 1};
@@ -311,7 +369,8 @@ const AudioSequence kFirstTrySequence{
 const AudioSequence kSecondTrySequence{
   "2nd try",
   kSecondTryClipIndexes,
-  sizeof(kSecondTryClipIndexes) / sizeof(kSecondTryClipIndexes[0])
+  sizeof(kSecondTryClipIndexes) / sizeof(kSecondTryClipIndexes[0]),
+  &kSecondTryVisuals
 };
 
 const AudioSequence kDontTrySequence{
