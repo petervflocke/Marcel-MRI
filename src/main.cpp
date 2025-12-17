@@ -42,7 +42,7 @@ S15_WAV, // 11
 S16_WAV, // 12
 S17_WAV, // 13
 alarm_WAV,// 14
-gandalf_WAV // 15
+evacuate_WAV // 15
 };
 #endif
 
@@ -566,8 +566,9 @@ void DontTryRenderAlarm(Adafruit_SSD1306& display,
 
   display.clearDisplay();
   if (state.flash_on) {
-    static const char* const kAlarmLines[] = {"ALARM", "FIRE"};
-    DrawCenteredLines(display, kAlarmLines, 2, 2);
+    static const char* const kAlarmLines[] = {"ALARM", " ", "FIRE"};
+    DrawCenteredLines(display, kAlarmLines,
+                      sizeof(kAlarmLines) / sizeof(kAlarmLines[0]), 2);
   }
 
   if ((now - state.phase_start_ms) >= kDontTryFlashDurationMs) {
@@ -580,8 +581,9 @@ void DontTryRenderFinal(Adafruit_SSD1306& display,
                         DontTryVisualState& state,
                         unsigned long now) {
   display.clearDisplay();
-  static const char* const kFinalLines[] = {"Fly you", "fools"};
-  DrawCenteredLines(display, kFinalLines, 2, 2);
+  static const char* const kFinalLines[] = {"Evacuate", "all", "patients!"};
+  DrawCenteredLines(display, kFinalLines,
+                    sizeof(kFinalLines) / sizeof(kFinalLines[0]), 2);
   if ((now - state.phase_start_ms) >= kDontTryFinalDisplayDurationMs) {
     // Placeholder: could loop or stop visuals.
   }
@@ -611,6 +613,10 @@ void DontTryStart() {
   g_dontTryVisualState.phase = DontTryPhase::Loading;
   g_dontTryVisualState.last_step_ms = millis();
   g_dontTryVisualState.phase_start_ms = g_dontTryVisualState.last_step_ms;
+  if (Adafruit_SSD1306* display = g_oledDisplay.rawDisplay()) {
+    display->clearDisplay();
+    display->display();
+  }
   g_oledDisplay.clearMenu();
   g_oledDisplay.setCustomRenderer(DontTryRender, &g_dontTryVisualState);
 }
