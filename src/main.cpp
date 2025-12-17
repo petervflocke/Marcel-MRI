@@ -53,9 +53,8 @@ constexpr uint8_t kFirstTryClipIndexes[] = {
 constexpr uint8_t kSecondTryClipIndexes[] = {
   0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 10};
 constexpr uint8_t kDontTryClipIndexes[] = {
-  12, 13, 11, 10, 4, 10, 4, 10, 14, 14, 14, 0, 15, 0, 15, 0};
-constexpr uint8_t kRelaxClipIndexes[] = {
-  14,14,14,14,14,14,15,15,15,15,15,15};
+  12, 13, 11, 10, 4, 10, 4, 10, 14, 14, 14, 0, 15, 0, 15, 0, 15, 0};
+constexpr uint8_t kRelaxClipIndexes[] = {};
 
 
 constexpr size_t kWavCount = sizeof(kWavs) / sizeof(kWavs[0]);
@@ -617,8 +616,8 @@ void DontTryStart() {
     display->clearDisplay();
     display->display();
   }
-  g_oledDisplay.clearMenu();
   g_oledDisplay.setCustomRenderer(DontTryRender, &g_dontTryVisualState);
+  g_oledDisplay.clearMenu();
 }
 
 void DontTryStop() {
