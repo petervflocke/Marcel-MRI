@@ -4,9 +4,9 @@
 
 #define GPIO_AUDIO_OUT_LEFT  18
 
-constexpr uint8_t ButDown = 14;
-constexpr uint8_t ButEnter = 13;
-constexpr uint8_t LedAlarmPin = 12;
+extern const uint8_t ButDown = 14;
+extern const uint8_t ButEnter = 13;
+extern const uint8_t LedAlarmPin = 12;
 constexpr unsigned long kDisplayUpdateIntervalMs = 25;
 constexpr unsigned long kButtonDebounceMs = 100;
 constexpr float kPi = 3.1415926535f;
@@ -17,6 +17,7 @@ constexpr float kPi = 3.1415926535f;
 #include "oled_display.h"
 #include "PICsData.h"
 #include "WavPwmAudio.h"
+#include "t-rex-duino/DinoGame.h"
 
 #if defined(USE_WAVDATA2)
 #include "WAVData2.h"
@@ -99,6 +100,7 @@ struct ButtonState {
 ButtonState g_buttonDownState;
 ButtonState g_buttonEnterState;
 unsigned long g_lastDisplayUpdateMs = 0;
+bool g_playingDinoGame = false;
 
 struct SequencePlayerState {
   const AudioSequence* active_sequence = nullptr;
@@ -819,9 +821,10 @@ void HandleMenuSelection(size_t index) {
       break;
     case 4:
       Serial.println(F("[MENU] Relax selected"));
-      if (!StartSequencePlayback(kRelaxSequence)) {
-        Serial.println(F("[MENU] Failed to start Relax sequence"));
-      }
+      g_playingDinoGame = true;
+      DinoGame::Run();
+      g_playingDinoGame = false;
+      g_oledDisplay.setMenu(g_mainMenu);
       break;
     default:
       Serial.print(F("[MENU] Unhandled index "));
@@ -860,6 +863,10 @@ void ServiceDisplay() {
   }
 
   g_lastDisplayUpdateMs = now;
+  if (g_playingDinoGame) {
+    return;
+  }
+
   if (g_oledDisplay.customRendererActive()) {
     g_oledDisplay.forceRender();
   } else {
@@ -910,6 +917,7 @@ void setup() {
   g_oledDisplay.scanBus();
   g_oledDisplay.begin();
   g_oledDisplay.setMenu(g_mainMenu);
+  DinoGame::Init(g_oledDisplay.rawDisplay());
 }
 
 void loop() {

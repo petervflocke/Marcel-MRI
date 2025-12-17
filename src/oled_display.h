@@ -4,6 +4,8 @@
 
 class Adafruit_SSD1306;
 
+class Adafruit_SSD1306;
+
 struct OledMenu {
   const char* title = nullptr;
   const char* const* items = nullptr;
@@ -26,6 +28,7 @@ class OledDisplay {
   void setCustomRenderer(CustomRenderCallback renderer, void* user_context);
   void clearCustomRenderer();
   bool customRendererActive() const;
+  Adafruit_SSD1306* rawDisplay();
 
  private:
   void render();

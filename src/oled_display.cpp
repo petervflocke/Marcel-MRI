@@ -161,6 +161,10 @@ bool OledDisplay::customRendererActive() const {
   return custom_renderer_ != nullptr;
 }
 
+Adafruit_SSD1306* OledDisplay::rawDisplay() {
+  return &display;
+}
+
 void OledDisplay::render() {
   if (!initialized_) {
     return;
