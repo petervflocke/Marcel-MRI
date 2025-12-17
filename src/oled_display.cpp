@@ -25,8 +25,8 @@ constexpr unsigned long kRenderIntervalMs = 250;
 constexpr int kMenuLineHeight = 10;
 constexpr int kMenuTitleSeparatorY = 10;
 constexpr int kMenuContentStartY = 14;
-constexpr int kMenuHelpAreaHeight = 10;
-constexpr int kMenuHelpTextPadding = 2;
+constexpr int kMenuHelpTextHeight = 8;
+constexpr int kMenuHelpGap = 1;
 
 Adafruit_SSD1306 display(kOledWidth, kOledHeight, &Wire, -1);
 
@@ -170,20 +170,18 @@ void OledDisplay::drawMenu() {
     y = kMenuContentStartY;
   }
 
-  int help_divider_y = kOledHeight - kMenuHelpAreaHeight;
+  int help_text_y = kOledHeight - kMenuHelpTextHeight;
+  if (help_text_y < 0) {
+    help_text_y = 0;
+  }
+  int help_divider_y = help_text_y - kMenuHelpGap;
   if (help_divider_y < 0) {
     help_divider_y = 0;
-  } else if (help_divider_y > kOledHeight) {
-    help_divider_y = kOledHeight;
   }
   display.drawFastHLine(0, help_divider_y, kOledWidth, SSD1306_WHITE);
-  int help_text_y = help_divider_y + kMenuHelpTextPadding;
-  if (help_text_y >= kOledHeight) {
-    help_text_y = kOledHeight - 1;
-  }
   display.setCursor(0, help_text_y);
   display.setTextColor(SSD1306_WHITE);
-  display.print(F("L:scroll  R:enter"));
+  display.print(F(" * Scroll   * Select"));
 
   const int menu_area_height = help_divider_y - y;
   if (menu_.item_count == 0 || menu_area_height <= 0) {
