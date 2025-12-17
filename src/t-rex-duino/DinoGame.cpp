@@ -206,8 +206,8 @@ void Run() {
   if (!g_display) return;
   firstStart = false;
   gameLoop();
-  while (isPressedJump()) delay(100);
-  delay(500);
+  while (!isPressedJump()) delay(50);
+  while (isPressedJump()) delay(50);
 }
 
 }  // namespace DinoGame
