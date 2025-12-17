@@ -289,9 +289,14 @@ const SequenceVisuals kFirstTryVisuals{
   FirstTryDialStop,
 };
 
-constexpr unsigned long kSecondTryFrameIntervalMs = 400;
-constexpr int kSecondTryImageWidthPx = 62;
+constexpr unsigned long kSecondTryStripeIntervalMs = 250;
+constexpr int kSecondTryImageWidthPx = 64;
 constexpr int kSecondTryImageHeightPx = 64;
+constexpr int kSecondTryStripeHeightPx = 4;
+constexpr size_t kSecondTryStripeCount =
+    kSecondTryImageHeightPx / kSecondTryStripeHeightPx;
+constexpr size_t kSecondTryBytesPerRow =
+    (kSecondTryImageWidthPx + 7) / 8;
 
 const unsigned char* const kSecondTryImages[] = {
   epd_bitmap_br00,
@@ -304,35 +309,78 @@ constexpr size_t kSecondTryImageCount =
 
 struct SecondTryImageState {
   size_t current_image = 0;
-  unsigned long last_switch_ms = 0;
+  size_t previous_image = 0;
+  bool previous_active = false;
+  size_t stripes_revealed = 0;
+  unsigned long last_step_ms = 0;
 };
 
 SecondTryImageState g_secondTryImageState;
+
+void DrawSecondTryStripe(Adafruit_SSD1306& display,
+                         int origin_x,
+                         int origin_y,
+                         const unsigned char* bitmap,
+                         size_t stripe_index) {
+  const size_t offset =
+      stripe_index * kSecondTryStripeHeightPx * kSecondTryBytesPerRow;
+  display.drawBitmap(origin_x,
+                     origin_y + static_cast<int>(stripe_index * kSecondTryStripeHeightPx),
+                     bitmap + offset,
+                     kSecondTryImageWidthPx,
+                     kSecondTryStripeHeightPx,
+                     SSD1306_WHITE);
+}
 
 void SecondTryImageRender(Adafruit_SSD1306& display, void* context) {
   auto* state = static_cast<SecondTryImageState*>(context);
   const unsigned long now = millis();
   if (kSecondTryImageCount > 0 &&
-      (now - state->last_switch_ms) >= kSecondTryFrameIntervalMs) {
-    state->last_switch_ms = now;
-    state->current_image = (state->current_image + 1) % kSecondTryImageCount;
+      (now - state->last_step_ms) >= kSecondTryStripeIntervalMs) {
+    state->last_step_ms = now;
+    if (state->stripes_revealed >= kSecondTryStripeCount) {
+      state->previous_image = state->current_image;
+      state->previous_active = true;
+      state->current_image = (state->current_image + 1) % kSecondTryImageCount;
+      state->stripes_revealed = 0;
+    }
+    state->stripes_revealed =
+        (state->stripes_revealed + 1) % (kSecondTryStripeCount + 1);
   }
 
-  display.fillRect(0, 0, display.width(), display.height(), SSD1306_BLACK);
   if (kSecondTryImageCount == 0) {
     return;
   }
 
   const int x = (display.width() - kSecondTryImageWidthPx) / 2;
   const int y = (display.height() - kSecondTryImageHeightPx) / 2;
+  if (state->previous_active && state->previous_image < kSecondTryImageCount) {
+    const unsigned char* previous_bitmap =
+        kSecondTryImages[state->previous_image];
+    display.drawBitmap(x, y, previous_bitmap, kSecondTryImageWidthPx,
+                       kSecondTryImageHeightPx, SSD1306_WHITE);
+  }
+
   const unsigned char* bitmap = kSecondTryImages[state->current_image];
-  display.drawBitmap(x, y, bitmap, kSecondTryImageWidthPx,
-                     kSecondTryImageHeightPx, SSD1306_WHITE);
+  const size_t stripes_to_draw =
+      (state->stripes_revealed > kSecondTryStripeCount)
+          ? kSecondTryStripeCount
+          : state->stripes_revealed;
+  for (size_t stripe = 0; stripe < stripes_to_draw; ++stripe) {
+    DrawSecondTryStripe(display, x, y, bitmap, stripe);
+  }
+
+  if (stripes_to_draw >= kSecondTryStripeCount) {
+    state->previous_active = false;
+  }
 }
 
 void SecondTryImageStart() {
   g_secondTryImageState.current_image = 0;
-  g_secondTryImageState.last_switch_ms = millis();
+  g_secondTryImageState.previous_image = 0;
+  g_secondTryImageState.previous_active = false;
+  g_secondTryImageState.stripes_revealed = 0;
+  g_secondTryImageState.last_step_ms = millis();
   g_oledDisplay.clearMenu();
   g_oledDisplay.setCustomRenderer(SecondTryImageRender, &g_secondTryImageState);
 }
@@ -348,7 +396,7 @@ const SequenceVisuals kSecondTryVisuals{
 
 constexpr uint8_t kDiagnosticClipIndexes[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 11, 12, 12, 13, 13};
 constexpr uint8_t kFirstTryClipIndexes[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-constexpr uint8_t kSecondTryClipIndexes[] = {1, 1, 1, 1, 1, 1, 1};
+constexpr uint8_t kSecondTryClipIndexes[] = {0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 10};
 constexpr uint8_t kDontTryClipIndexes[] = {2, 2, 3, 3, 3, 4, 4};
 constexpr uint8_t kRelaxClipIndexes[] = {14,14,14,14,14,14,15,15,15,15,15,15};
 
