@@ -194,15 +194,17 @@ const SequenceVisuals kDiagnosticVisuals{
   DiagnosticScrollStop,
 };
 
-constexpr unsigned long kFirstTryDialIntervalMs = 60;
-constexpr float kFirstTryDialStepDeg = 10.0f;
+constexpr unsigned long kFirstTryDialIntervalMs = 200;
+constexpr float kFirstTryDialStepDeg = 5.f;
+constexpr size_t kFirstTryDialStepCount = 36;
 constexpr int kFirstTryDialRadiusPx = 24;
 constexpr int kFirstTryDialLineExtendPx = 6;
 constexpr int kFirstTryDialLineHalfThicknessPx = 1;
 
 struct FirstTryDialState {
-  float angle_deg = 0.0f;
   unsigned long last_step_ms = 0;
+  size_t filled_steps = 0;
+  bool drawn_steps[kFirstTryDialStepCount] = {};
 };
 
 FirstTryDialState g_firstTryDialState;
@@ -246,12 +248,11 @@ void DrawDialLine(Adafruit_SSD1306& display,
 void FirstTryDialRender(Adafruit_SSD1306& display, void* context) {
   auto* state = static_cast<FirstTryDialState*>(context);
   const unsigned long now = millis();
-  if (now - state->last_step_ms >= kFirstTryDialIntervalMs) {
+  if ((now - state->last_step_ms) >= kFirstTryDialIntervalMs &&
+      state->filled_steps < kFirstTryDialStepCount) {
     state->last_step_ms = now;
-    state->angle_deg += kFirstTryDialStepDeg;
-    if (state->angle_deg >= 360.0f) {
-      state->angle_deg -= 360.0f;
-    }
+    state->drawn_steps[state->filled_steps] = true;
+    state->filled_steps++;
   }
 
   const int cx = display.width() / 2;
@@ -259,12 +260,20 @@ void FirstTryDialRender(Adafruit_SSD1306& display, void* context) {
 
   display.fillRect(0, 0, display.width(), display.height(), SSD1306_BLACK);
   DrawDialCircle(display, cx, cy);
-  DrawDialLine(display, cx, cy, state->angle_deg);
+  for (size_t i = 0; i < kFirstTryDialStepCount; ++i) {
+    if (state->drawn_steps[i]) {
+      const float angle = static_cast<float>(i) * kFirstTryDialStepDeg;
+      DrawDialLine(display, cx, cy, angle);
+    }
+  }
 }
 
 void FirstTryDialStart() {
-  g_firstTryDialState.angle_deg = 0.0f;
-  g_firstTryDialState.last_step_ms = millis();
+  g_firstTryDialState.last_step_ms = millis() - kFirstTryDialIntervalMs;
+  g_firstTryDialState.filled_steps = 0;
+  for (size_t i = 0; i < kFirstTryDialStepCount; ++i) {
+    g_firstTryDialState.drawn_steps[i] = false;
+  }
   g_oledDisplay.clearMenu();
   g_oledDisplay.setCustomRenderer(FirstTryDialRender, &g_firstTryDialState);
 }
