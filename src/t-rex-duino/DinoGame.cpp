@@ -206,6 +206,7 @@ void Run() {
   if (!g_display) return;
   firstStart = false;
   gameLoop();
+  lcd.setInverse(false);
   while (!isPressedJump()) delay(50);
   while (isPressedJump()) delay(50);
 }
