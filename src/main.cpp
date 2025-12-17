@@ -44,6 +44,13 @@ gandalf_WAV // 15
 };
 #endif
 
+constexpr uint8_t kDiagnosticClipIndexes[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 11, 12, 12, 13, 13};
+constexpr uint8_t kFirstTryClipIndexes[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+constexpr uint8_t kSecondTryClipIndexes[] = {0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 10};
+constexpr uint8_t kDontTryClipIndexes[] = {7, 8, 4, 4, 10, 10, 10, 14, 14, 14, 14, 0, 15, 0, 15, 0};
+constexpr uint8_t kRelaxClipIndexes[] = {14,14,14,14,14,14,15,15,15,15,15,15};
+
+
 constexpr size_t kWavCount = sizeof(kWavs) / sizeof(kWavs[0]);
 
 struct SequenceVisuals {
@@ -393,12 +400,6 @@ const SequenceVisuals kSecondTryVisuals{
   SecondTryImageStart,
   SecondTryImageStop,
 };
-
-constexpr uint8_t kDiagnosticClipIndexes[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 11, 12, 12, 13, 13};
-constexpr uint8_t kFirstTryClipIndexes[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-constexpr uint8_t kSecondTryClipIndexes[] = {0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 10};
-constexpr uint8_t kDontTryClipIndexes[] = {2, 2, 3, 3, 3, 4, 4};
-constexpr uint8_t kRelaxClipIndexes[] = {14,14,14,14,14,14,15,15,15,15,15,15};
 
 const AudioSequence kDiagnosticSequence{
   "Diagnostics",
