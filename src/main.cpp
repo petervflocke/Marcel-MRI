@@ -210,25 +210,74 @@ const SequenceVisuals kDiagnosticVisuals{
 };
 
 constexpr unsigned long kFirstTryDialIntervalMs = 200;
-constexpr float kFirstTryDialStepDeg = 3.0f;
-constexpr size_t kFirstTryDialStepCount =
-    static_cast<size_t>(180.0f / kFirstTryDialStepDeg);
-constexpr int kFirstTryDialRadiusPx = 28;
-constexpr int kFirstTryDialLineExtendPx = 4;
+constexpr size_t kFirstTryDialLineCount = 60;
+constexpr int kFirstTryOvalRadiusXPx = 34;
+constexpr int kFirstTryOvalRadiusYPx = 20;
 constexpr int kFirstTryDialLineHalfThicknessPx = 1;
+constexpr int kFirstTryLineBaseRadiusPx =
+    (kFirstTryOvalRadiusXPx > kFirstTryOvalRadiusYPx) ? kFirstTryOvalRadiusXPx
+                                                      : kFirstTryOvalRadiusYPx;
+constexpr int kFirstTryLineExtendMinPx = -4;
+constexpr int kFirstTryLineExtendMaxPx = 6;
+constexpr float kFirstTryGoldenIncrementDeg = 111.246f;  // 180 / φ
+constexpr float kFirstTryAngleJitterDeg = 5.0f;
+
+struct FirstTryDialLine {
+  float angle_deg = 0.f;
+  int length_offset_px = 0;
+};
 
 struct FirstTryDialState {
   unsigned long last_step_ms = 0;
-  size_t filled_steps = 0;
-  bool drawn_steps[kFirstTryDialStepCount] = {};
+  size_t line_count = 0;
+  float current_angle_deg = 0.f;
+  FirstTryDialLine lines[kFirstTryDialLineCount];
 };
 
 FirstTryDialState g_firstTryDialState;
 
-void DrawDialCircle(Adafruit_SSD1306& display, int cx, int cy) {
-  for (int r = kFirstTryDialRadiusPx - 1; r <= kFirstTryDialRadiusPx + 1; ++r) {
-    if (r > 0) {
-      display.drawCircle(cx, cy, r, SSD1306_WHITE);
+float WrapAngle180(float angle_deg) {
+  while (angle_deg >= 180.0f) angle_deg -= 180.0f;
+  while (angle_deg < 0.0f) angle_deg += 180.0f;
+  return angle_deg;
+}
+
+float RandomFloat(float min_value, float max_value) {
+  const float unit =
+      static_cast<float>(random(0L, 10000L)) / 9999.0f;  // [0,1]
+  return min_value + (max_value - min_value) * unit;
+}
+
+int RandomLengthOffset() {
+  const int range =
+      (kFirstTryLineExtendMaxPx - kFirstTryLineExtendMinPx) + 1;
+  const int value = static_cast<int>(random(static_cast<long>(range)));
+  return kFirstTryLineExtendMinPx + value;
+}
+
+FirstTryDialLine CreateNextDialLine(FirstTryDialState& state) {
+  FirstTryDialLine line;
+  float candidate =
+      WrapAngle180(state.current_angle_deg + kFirstTryGoldenIncrementDeg);
+  const float jitter = RandomFloat(-kFirstTryAngleJitterDeg,
+                                   kFirstTryAngleJitterDeg);
+  line.angle_deg = WrapAngle180(candidate + jitter);
+  state.current_angle_deg = line.angle_deg;
+  line.length_offset_px = RandomLengthOffset();
+  return line;
+}
+
+void DrawDialOval(Adafruit_SSD1306& display, int cx, int cy) {
+  for (int x = -kFirstTryOvalRadiusXPx; x <= kFirstTryOvalRadiusXPx; ++x) {
+    const float normalized_x =
+        static_cast<float>(x) / static_cast<float>(kFirstTryOvalRadiusXPx);
+    const float inside = 1.0f - normalized_x * normalized_x;
+    if (inside < 0.0f) continue;
+    const float y_f = sqrtf(inside) * static_cast<float>(kFirstTryOvalRadiusYPx);
+    const int y = static_cast<int>(roundf(y_f));
+    for (int offset = -1; offset <= 1; ++offset) {
+      display.drawPixel(cx + x, cy + y + offset, SSD1306_WHITE);
+      display.drawPixel(cx + x, cy - y + offset, SSD1306_WHITE);
     }
   }
 }
@@ -236,13 +285,16 @@ void DrawDialCircle(Adafruit_SSD1306& display, int cx, int cy) {
 void DrawDialLine(Adafruit_SSD1306& display,
                   int cx,
                   int cy,
-                  float angle_deg) {
+                  float angle_deg,
+                  int length_offset_px) {
   const float angle_rad = angle_deg * (kPi / 180.0f);
   const float dir_x = cosf(angle_rad);
   const float dir_y = sinf(angle_rad);
   const float perp_x = -dir_y;
   const float perp_y = dir_x;
-  const float half_len = static_cast<float>(kFirstTryDialRadiusPx + kFirstTryDialLineExtendPx);
+  const int base_len = kFirstTryLineBaseRadiusPx + length_offset_px;
+  const float half_len =
+      static_cast<float>(max(4, base_len));
 
   for (int offset = -kFirstTryDialLineHalfThicknessPx;
        offset <= kFirstTryDialLineHalfThicknessPx;
@@ -265,33 +317,28 @@ void FirstTryDialRender(Adafruit_SSD1306& display, void* context) {
   auto* state = static_cast<FirstTryDialState*>(context);
   const unsigned long now = millis();
   if ((now - state->last_step_ms) >= kFirstTryDialIntervalMs &&
-      state->filled_steps < kFirstTryDialStepCount) {
+      state->line_count < kFirstTryDialLineCount) {
     state->last_step_ms = now;
-    state->drawn_steps[state->filled_steps] = true;
-    state->filled_steps++;
+    state->lines[state->line_count++] = CreateNextDialLine(*state);
   }
 
   const int cx = display.width() / 2;
   const int cy = display.height() / 2;
 
   display.fillRect(0, 0, display.width(), display.height(), SSD1306_BLACK);
-  DrawDialCircle(display, cx, cy);
-  for (size_t i = 0; i < kFirstTryDialStepCount; ++i) {
-    if (state->drawn_steps[i]) {
-      const float angle = static_cast<float>(i) * kFirstTryDialStepDeg;
-      DrawDialLine(display, cx, cy, angle);
-    }
+  DrawDialOval(display, cx, cy);
+  for (size_t i = 0; i < state->line_count; ++i) {
+    DrawDialLine(display, cx, cy, state->lines[i].angle_deg,
+                 state->lines[i].length_offset_px);
   }
 }
 
 void FirstTryDialStart() {
   g_firstTryDialState.last_step_ms = millis() - kFirstTryDialIntervalMs;
-  g_firstTryDialState.filled_steps = 0;
-  for (size_t i = 0; i < kFirstTryDialStepCount; ++i) {
-    g_firstTryDialState.drawn_steps[i] = false;
-  }
-  g_oledDisplay.clearMenu();
+  g_firstTryDialState.line_count = 0;
+  g_firstTryDialState.current_angle_deg = RandomFloat(0.0f, 180.0f);
   g_oledDisplay.setCustomRenderer(FirstTryDialRender, &g_firstTryDialState);
+  g_oledDisplay.clearMenu();
 }
 
 void FirstTryDialStop() {
