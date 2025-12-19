@@ -4,9 +4,9 @@
 
 #define GPIO_AUDIO_OUT_LEFT  0
 
-extern const uint8_t ButDown = 13; // 14
-extern const uint8_t ButEnter = 12; // 13
-extern const uint8_t LedAlarmPin = 11; // 12
+extern const uint8_t ButDown = 13; 
+extern const uint8_t ButEnter = 12; 
+extern const uint8_t LedAlarmPin = 11; 
 extern const uint8_t OnLEDPin = 10; 
 constexpr unsigned long kDisplayUpdateIntervalMs = 25;
 constexpr unsigned long kButtonDebounceMs = 100;
@@ -588,6 +588,7 @@ void DontTryRenderPreAlarmPause(Adafruit_SSD1306& display,
     state.flash_on = true;
     state.led_on = true;
     state.led_last_toggle_ms = now;
+    digitalWrite(OnLEDPin, LOW);
     digitalWrite(LedAlarmPin, HIGH);
   }
 }
@@ -670,6 +671,7 @@ void DontTryStart() {
 
 void DontTryStop() {
   digitalWrite(LedAlarmPin, LOW);
+  digitalWrite(OnLEDPin, HIGH);
   g_oledDisplay.clearCustomRenderer();
 }
 
@@ -874,10 +876,12 @@ void HandleMenuSelection(size_t index) {
       break;
     case 4:
       Serial.println(F("[MENU] Relax selected"));
+      digitalWrite(OnLEDPin, LOW);
       g_playingDinoGame = true;
       DinoGame::Run();
       g_playingDinoGame = false;
       g_oledDisplay.setMenu(g_mainMenu);
+      digitalWrite(OnLEDPin, HIGH);
       break;
     default:
       Serial.print(F("[MENU] Unhandled index "));
@@ -956,6 +960,8 @@ void setup() {
   pinMode(ButEnter, INPUT_PULLUP);
   pinMode(LedAlarmPin, OUTPUT);
   digitalWrite(LedAlarmPin, LOW);
+  pinMode(OnLEDPin, OUTPUT);
+  digitalWrite(OnLEDPin, LOW);
   const bool down_level = gpio_get(ButDown);
   g_buttonDownState.raw_level = down_level;
   g_buttonDownState.stable_level = down_level;
@@ -970,6 +976,7 @@ void setup() {
   g_oledDisplay.scanBus();
   g_oledDisplay.begin();
   g_oledDisplay.setMenu(g_mainMenu);
+  digitalWrite(OnLEDPin, HIGH);
   DinoGame::Init(g_oledDisplay.rawDisplay());
 }
 
