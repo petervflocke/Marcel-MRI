@@ -2,11 +2,12 @@
 #include <Adafruit_SSD1306.h>
 #include <math.h>
 
-#define GPIO_AUDIO_OUT_LEFT  18
+#define GPIO_AUDIO_OUT_LEFT  0
 
-extern const uint8_t ButDown = 14;
-extern const uint8_t ButEnter = 13;
-extern const uint8_t LedAlarmPin = 12;
+extern const uint8_t ButDown = 13; // 14
+extern const uint8_t ButEnter = 12; // 13
+extern const uint8_t LedAlarmPin = 11; // 12
+extern const uint8_t OnLEDPin = 10; 
 constexpr unsigned long kDisplayUpdateIntervalMs = 25;
 constexpr unsigned long kButtonDebounceMs = 100;
 constexpr float kPi = 3.1415926535f;
