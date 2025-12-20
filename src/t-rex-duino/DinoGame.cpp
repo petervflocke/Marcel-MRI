@@ -29,6 +29,9 @@ namespace DinoGame {
 namespace {
 
 Adafruit_SSD1306* g_display = nullptr;
+CollisionCallback g_collisionCallback = nullptr;
+TickCallback g_tickCallback = nullptr;
+GameOverCallback g_gameOverCallback = nullptr;
 
 class DisplayAdapter {
  public:
@@ -146,6 +149,9 @@ void gameLoop() {
 
     if (!trex.isBlinking() &&
         CollisionDetector::check(trex, enemies.data, enemies.size())) {
+      if (g_collisionCallback) {
+        g_collisionCallback();
+      }
       if (lives) {
         trex.blink();
         --lives;
@@ -176,6 +182,9 @@ void gameLoop() {
     while (millis() - prvT < frameTime) {
     }
     prvT = millis();
+    if (g_tickCallback) {
+      g_tickCallback();
+    }
   }
 }
 
@@ -206,9 +215,24 @@ void Run() {
   if (!g_display) return;
   firstStart = false;
   gameLoop();
+  if (g_gameOverCallback) {
+    g_gameOverCallback();
+  }
   lcd.setInverse(false);
   while (!isPressedJump()) delay(50);
   while (isPressedJump()) delay(50);
+}
+
+void SetCollisionCallback(CollisionCallback callback) {
+  g_collisionCallback = callback;
+}
+
+void SetTickCallback(TickCallback callback) {
+  g_tickCallback = callback;
+}
+
+void SetGameOverCallback(GameOverCallback callback) {
+  g_gameOverCallback = callback;
 }
 
 }  // namespace DinoGame

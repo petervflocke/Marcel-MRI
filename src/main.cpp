@@ -15,6 +15,8 @@ constexpr float kPi = 3.1415926535f;
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
+#include "hardware/clocks.h"
+#include "hardware/pio.h"
 #include "oled_display.h"
 #include "PICsData.h"
 #include "WavPwmAudio.h"
@@ -70,6 +72,9 @@ struct AudioSequence {
   const uint8_t* clip_indexes;
   size_t length;
   const SequenceVisuals* visuals = nullptr;
+  bool led_fx_enabled = false;
+  const uint32_t* led_fx_palette = nullptr;
+  size_t led_fx_palette_len = 0;
 };
 
 OledDisplay g_oledDisplay;
@@ -487,11 +492,14 @@ struct DontTryVisualState {
   bool flash_on = true;
   unsigned long led_last_toggle_ms = 0;
   bool led_on = false;
+  bool led_state = false;
 };
 
 DontTryVisualState g_dontTryVisualState;
 
 const unsigned char* const kDontTryBitmap = epd_bitmap_br02;
+
+void LedFxStop();
 
 int16_t MeasureTextWidth(const char* text, uint8_t size) {
   if (!text) {
@@ -587,9 +595,19 @@ void DontTryRenderPreAlarmPause(Adafruit_SSD1306& display,
     state.last_step_ms = now;
     state.flash_on = true;
     state.led_on = true;
+    state.led_state = true;
     state.led_last_toggle_ms = now;
+    LedFxStop();
     digitalWrite(OnLEDPin, LOW);
-    digitalWrite(LedAlarmPin, HIGH);
+    digitalWrite(LedAlarmPin, state.led_state ? HIGH : LOW);
+  }
+}
+
+void UpdateDontTryAlarmLed(DontTryVisualState& state, unsigned long now) {
+  if ((now - state.led_last_toggle_ms) >= kDontTryLedFlashIntervalMs) {
+    state.led_last_toggle_ms = now;
+    state.led_state = !state.led_state;
+    digitalWrite(LedAlarmPin, state.led_state ? HIGH : LOW);
   }
 }
 
@@ -602,14 +620,7 @@ void DontTryRenderAlarm(Adafruit_SSD1306& display,
   }
 
   if (state.led_on) {
-    if ((now - state.led_last_toggle_ms) >= kDontTryLedFlashIntervalMs) {
-      state.led_last_toggle_ms = now;
-      digitalWrite(LedAlarmPin, !state.flash_on);
-    }
-    if ((now - state.phase_start_ms) >= kDontTryLedFlashDurationMs) {
-      state.led_on = false;
-      digitalWrite(LedAlarmPin, LOW);
-    }
+    UpdateDontTryAlarmLed(state, now);
   }
 
   display.clearDisplay();
@@ -632,6 +643,9 @@ void DontTryRenderFinal(Adafruit_SSD1306& display,
   static const char* const kFinalLines[] = {"Evacuate", "all", "patients!"};
   DrawCenteredLines(display, kFinalLines,
                     sizeof(kFinalLines) / sizeof(kFinalLines[0]), 2);
+  if (state.led_on) {
+    UpdateDontTryAlarmLed(state, now);
+  }
   if ((now - state.phase_start_ms) >= kDontTryFinalDisplayDurationMs) {
     // Placeholder: could loop or stop visuals.
   }
@@ -675,6 +689,35 @@ void DontTryStop() {
   g_oledDisplay.clearCustomRenderer();
 }
 
+constexpr size_t kLedFxStepCount = 10;
+constexpr unsigned long kLedFxStepIntervalMs = 100;
+constexpr uint8_t kLedFxBrightness = 32;
+
+const uint32_t kLedFxPaletteDefault[kLedFxStepCount] = {
+  0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x00FF7F,
+  0x00FFFF, 0x007FFF, 0x0000FF, 0x7F00FF, 0xFF00FF
+};
+
+const uint32_t kLedFxPaletteDiagnostic[kLedFxStepCount] = {
+  0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x00FF7F,
+  0x00FFFF, 0x007FFF, 0x0000FF, 0x7F00FF, 0xFF00FF
+};
+
+const uint32_t kLedFxPaletteFirstTry[kLedFxStepCount] = {
+  0x00FF00, 0x00FF33, 0x00FF66, 0x00FF99, 0x00FFCC,
+  0x00FF99, 0x00FF66, 0x00FF33, 0x00FF00, 0x33FF66
+};
+
+const uint32_t kLedFxPaletteSecondTry[kLedFxStepCount] = {
+  0x0000FF, 0x0033FF, 0x0066FF, 0x0099FF, 0x00CCFF,
+  0x0099FF, 0x0066FF, 0x0033FF, 0x0000FF, 0x3300FF
+};
+
+const uint32_t kLedFxPaletteDontTry[kLedFxStepCount] = {
+  0xFF0000, 0xCC0000, 0x990000, 0x660000, 0x330000,
+  0x660000, 0x990000, 0xCC0000, 0xFF0000, 0xFF3300
+};
+
 const SequenceVisuals kDontTryVisuals{
   DontTryStart,
   DontTryStop,
@@ -684,28 +727,40 @@ const AudioSequence kDiagnosticSequence{
   "Diagnostics",
   kDiagnosticClipIndexes,
   sizeof(kDiagnosticClipIndexes) / sizeof(kDiagnosticClipIndexes[0]),
-  &kDiagnosticVisuals
+  &kDiagnosticVisuals,
+  true,
+  kLedFxPaletteDiagnostic,
+  kLedFxStepCount
 };
 
 const AudioSequence kFirstTrySequence{
   "1st try",
   kFirstTryClipIndexes,
   sizeof(kFirstTryClipIndexes) / sizeof(kFirstTryClipIndexes[0]),
-  &kFirstTryVisuals
+  &kFirstTryVisuals,
+  true,
+  kLedFxPaletteFirstTry,
+  kLedFxStepCount
 };
 
 const AudioSequence kSecondTrySequence{
   "2nd try",
   kSecondTryClipIndexes,
   sizeof(kSecondTryClipIndexes) / sizeof(kSecondTryClipIndexes[0]),
-  &kSecondTryVisuals
+  &kSecondTryVisuals,
+  true,
+  kLedFxPaletteSecondTry,
+  kLedFxStepCount
 };
 
 const AudioSequence kDontTrySequence{
   "Don't try",
   kDontTryClipIndexes,
   sizeof(kDontTryClipIndexes) / sizeof(kDontTryClipIndexes[0]),
-  &kDontTryVisuals
+  &kDontTryVisuals,
+  true,
+  kLedFxPaletteDontTry,
+  kLedFxStepCount
 };
 
 const AudioSequence kRelaxSequence{
@@ -717,6 +772,167 @@ const AudioSequence kRelaxSequence{
 SequencePlayerState g_sequencePlayer;
 
 bool ButtonPressed(uint8_t pin, ButtonState& state);
+void LedFxStart(const uint32_t* palette, size_t palette_len);
+void LedFxStop();
+void ServiceLedFx();
+void LedFxFlash(uint32_t rgb, unsigned long duration_ms);
+
+constexpr uint8_t kWs2812Pin = 16;
+constexpr float kWs2812BitRateHz = 800000.0f;
+constexpr uint8_t kWs2812TimingT1 = 2;
+constexpr uint8_t kWs2812TimingT2 = 5;
+constexpr uint8_t kWs2812TimingT3 = 3;
+constexpr uint8_t kWs2812CyclesPerBit =
+    kWs2812TimingT1 + kWs2812TimingT2 + kWs2812TimingT3;
+
+struct LedFxState {
+  bool active = false;
+  size_t step_index = 0;
+  unsigned long last_step_ms = 0;
+  const uint32_t* palette = nullptr;
+  size_t palette_len = 0;
+};
+
+LedFxState g_ledFxState;
+
+struct LedFxFlashState {
+  bool active = false;
+  uint32_t color = 0;
+  unsigned long end_ms = 0;
+};
+
+LedFxFlashState g_ledFxFlashState;
+
+const uint16_t kWs2812ProgramInstructions[] = {
+  0x6221, // out x, 1 side 0 [2]
+  0x1123, // jmp !x, 3 side 1 [1]
+  0x1400, // jmp 0 side 1 [4]
+  0xa442, // nop side 0 [4]
+};
+
+const struct pio_program kWs2812Program = {
+  .instructions = kWs2812ProgramInstructions,
+  .length = 4,
+  .origin = -1,
+};
+
+PIO g_ws2812_pio = pio0;
+uint g_ws2812_sm = 0;
+uint g_ws2812_offset = 0;
+bool g_ws2812_ready = false;
+
+uint32_t ApplyBrightness(uint32_t rgb, uint8_t brightness) {
+  const uint8_t r = (rgb >> 16) & 0xFF;
+  const uint8_t g = (rgb >> 8) & 0xFF;
+  const uint8_t b = rgb & 0xFF;
+  const uint8_t r_out = (static_cast<uint16_t>(r) * brightness) / 255;
+  const uint8_t g_out = (static_cast<uint16_t>(g) * brightness) / 255;
+  const uint8_t b_out = (static_cast<uint16_t>(b) * brightness) / 255;
+  return (static_cast<uint32_t>(r_out) << 16) |
+         (static_cast<uint32_t>(g_out) << 8) |
+         static_cast<uint32_t>(b_out);
+}
+
+void Ws2812PioInit() {
+  g_ws2812_offset = pio_add_program(g_ws2812_pio, &kWs2812Program);
+  pio_gpio_init(g_ws2812_pio, kWs2812Pin);
+  pio_sm_set_consecutive_pindirs(g_ws2812_pio, g_ws2812_sm, kWs2812Pin, 1, true);
+
+  pio_sm_config config = pio_get_default_sm_config();
+  sm_config_set_wrap(&config, g_ws2812_offset + 0, g_ws2812_offset + 3);
+  sm_config_set_sideset(&config, 1, false, false);
+  sm_config_set_sideset_pins(&config, kWs2812Pin);
+  sm_config_set_out_shift(&config, false, true, 24);
+  sm_config_set_fifo_join(&config, PIO_FIFO_JOIN_TX);
+
+  const float div =
+      static_cast<float>(clock_get_hz(clk_sys)) /
+      (kWs2812BitRateHz * static_cast<float>(kWs2812CyclesPerBit));
+  sm_config_set_clkdiv(&config, div);
+
+  pio_sm_init(g_ws2812_pio, g_ws2812_sm, g_ws2812_offset, &config);
+  pio_sm_set_pins_with_mask(g_ws2812_pio, g_ws2812_sm, 0u, 1u << kWs2812Pin);
+  pio_sm_set_enabled(g_ws2812_pio, g_ws2812_sm, true);
+  g_ws2812_ready = true;
+}
+
+void Ws2812Set(uint32_t rgb) {
+  if (!g_ws2812_ready) {
+    return;
+  }
+  const uint32_t scaled = ApplyBrightness(rgb, kLedFxBrightness);
+  const uint32_t grb = ((scaled >> 8) & 0x00FF00)
+                     | ((scaled << 8) & 0xFF0000)
+                     |  (scaled       & 0x0000FF);
+  pio_sm_put_blocking(g_ws2812_pio, g_ws2812_sm, grb << 8u);
+}
+
+void LedFxStart(const uint32_t* palette, size_t palette_len) {
+  g_ledFxState.active = true;
+  g_ledFxState.step_index = 0;
+  g_ledFxState.last_step_ms = millis();
+  if (!palette || palette_len == 0) {
+    palette = kLedFxPaletteDefault;
+    palette_len = kLedFxStepCount;
+  }
+  g_ledFxState.palette = palette;
+  g_ledFxState.palette_len = palette_len;
+  Ws2812Set(g_ledFxState.palette[g_ledFxState.step_index]);
+}
+
+void LedFxStop() {
+  g_ledFxState.active = false;
+  g_ledFxFlashState.active = false;
+  Ws2812Set(0x000000);
+}
+
+void LedFxFlash(uint32_t rgb, unsigned long duration_ms) {
+  g_ledFxFlashState.active = true;
+  g_ledFxFlashState.color = rgb;
+  g_ledFxFlashState.end_ms = millis() + duration_ms;
+  Ws2812Set(rgb);
+}
+
+void ServiceLedFx() {
+  const unsigned long now = millis();
+  if (g_ledFxFlashState.active) {
+    if (now >= g_ledFxFlashState.end_ms) {
+      g_ledFxFlashState.active = false;
+      if (g_ledFxState.active) {
+        g_ledFxState.last_step_ms = now;
+        const uint32_t* palette =
+            g_ledFxState.palette ? g_ledFxState.palette : kLedFxPaletteDefault;
+        const size_t palette_len =
+            g_ledFxState.palette_len == 0 ? kLedFxStepCount
+                                          : g_ledFxState.palette_len;
+        Ws2812Set(palette[g_ledFxState.step_index % palette_len]);
+      } else {
+        Ws2812Set(0x000000);
+      }
+    }
+    return;
+  }
+  if (!g_ledFxState.active) {
+    return;
+  }
+  if ((now - g_ledFxState.last_step_ms) < kLedFxStepIntervalMs) {
+    return;
+  }
+  g_ledFxState.last_step_ms = now;
+  const size_t palette_len =
+      g_ledFxState.palette_len == 0 ? kLedFxStepCount : g_ledFxState.palette_len;
+  g_ledFxState.step_index = (g_ledFxState.step_index + 1) % palette_len;
+  const uint32_t* palette =
+      g_ledFxState.palette ? g_ledFxState.palette : kLedFxPaletteDefault;
+  Ws2812Set(palette[g_ledFxState.step_index]);
+}
+
+constexpr uint32_t kDinoCollisionFlashColor = 0x660000;
+constexpr unsigned long kDinoCollisionFlashMs = 180;
+
+void DinoCollisionFlash() {
+  LedFxFlash(kDinoCollisionFlashColor, kDinoCollisionFlashMs);
+}
 
 bool SequenceIsActive() {
   return g_sequencePlayer.active_sequence != nullptr;
@@ -736,6 +952,7 @@ void ResetSequencePlayer() {
   g_sequencePlayer.active_sequence = nullptr;
   g_sequencePlayer.clip_index = 0;
   g_oledDisplay.setMenu(g_mainMenu);
+  LedFxStop();
 }
 
 bool StartCurrentSequenceClip() {
@@ -796,6 +1013,10 @@ bool StartSequencePlayback(const AudioSequence& sequence) {
     WavPwmStopAudio();
     ResetSequencePlayer();
     return false;
+  }
+
+  if (sequence.led_fx_enabled) {
+    LedFxStart(sequence.led_fx_palette, sequence.led_fx_palette_len);
   }
 
   if (g_sequencePlayer.visuals && g_sequencePlayer.visuals->on_start) {
@@ -876,6 +1097,7 @@ void HandleMenuSelection(size_t index) {
       break;
     case 4:
       Serial.println(F("[MENU] Relax selected"));
+      LedFxStop();
       digitalWrite(OnLEDPin, LOW);
       g_playingDinoGame = true;
       DinoGame::Run();
@@ -972,16 +1194,23 @@ void setup() {
   g_buttonEnterState.stable_level = enter_level;
   g_buttonEnterState.last_change_ms = millis();
   WavPwmInit(GPIO_AUDIO_OUT_LEFT);
+
+  Ws2812PioInit();
+  LedFxStop();
   
   g_oledDisplay.scanBus();
   g_oledDisplay.begin();
   g_oledDisplay.setMenu(g_mainMenu);
   digitalWrite(OnLEDPin, HIGH);
   DinoGame::Init(g_oledDisplay.rawDisplay());
+  DinoGame::SetCollisionCallback(DinoCollisionFlash);
+  DinoGame::SetTickCallback(ServiceLedFx);
+  DinoGame::SetGameOverCallback(LedFxStop);
 }
 
 void loop() {
   ServiceDisplay();
   ServiceSequencePlayback();
   HandleMenuButtons();
+  ServiceLedFx();
 }
