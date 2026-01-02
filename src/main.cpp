@@ -474,10 +474,14 @@ constexpr size_t kDontTryStripeCutoff = kDontTryStripeCount / 2;
 constexpr size_t kDontTryBytesPerRow =
     (kDontTryImageWidthPx + 7) / 8;
 constexpr unsigned long kDontTryFlashIntervalMs = 250;
-constexpr unsigned long kDontTryPostScanDelayMs = 6000;
+constexpr unsigned long kDontTryPostScanDelayMs = 5000;
 constexpr unsigned long kDontTryLedFlashDurationMs = 4500;
 constexpr unsigned long kDontTryFlashDurationMs = 4000;
 constexpr unsigned long kDontTryFinalDisplayDurationMs = 3000;
+constexpr unsigned long kDontTryDistinguishDurationMs = 30000;
+constexpr unsigned long kDontTryDistinguishFlashIntervalMs = 1000;
+constexpr unsigned long kDontTrySavedMessageDurationMs = 10000;
+constexpr unsigned long kDontTryTimeoutMessageDurationMs = 10000;
 constexpr unsigned long kDontTryLedFlashIntervalMs = 100;
 
 enum class DontTryPhase : uint8_t {
@@ -485,6 +489,10 @@ enum class DontTryPhase : uint8_t {
   PreAlarmPause,
   AlarmFlash,
   FinalMessage,
+  DistinguishFire,
+  SavedMessage,
+  TimeoutMessage,
+  Done,
 };
 
 struct DontTryVisualState {
@@ -650,8 +658,85 @@ void DontTryRenderFinal(Adafruit_SSD1306& display,
     UpdateDontTryAlarmLed(state, now);
   }
   if ((now - state.phase_start_ms) >= kDontTryFinalDisplayDurationMs) {
-    // Placeholder: could loop or stop visuals.
+    state.phase = DontTryPhase::DistinguishFire;
+    state.phase_start_ms = now;
+    state.last_step_ms = now;
+    state.flash_on = true;
   }
+}
+
+void DontTryRenderDistinguish(Adafruit_SSD1306& display,
+                              DontTryVisualState& state,
+                              unsigned long now) {
+  if ((now - state.last_step_ms) >= kDontTryDistinguishFlashIntervalMs) {
+    state.last_step_ms = now;
+    state.flash_on = !state.flash_on;
+  }
+
+  if (state.led_on) {
+    UpdateDontTryAlarmLed(state, now);
+  }
+
+  display.clearDisplay();
+  if (state.flash_on) {
+    static const char* const kDistinguishLines[] = {
+        "DISTIN-", "GUISH", "THE", "FIRE"};
+    DrawCenteredLines(display, kDistinguishLines,
+                      sizeof(kDistinguishLines) /
+                          sizeof(kDistinguishLines[0]),
+                      2);
+  }
+
+  if ((now - state.phase_start_ms) >= kDontTryDistinguishDurationMs) {
+    state.phase = DontTryPhase::TimeoutMessage;
+    state.phase_start_ms = now;
+  }
+}
+
+void DontTryRenderSavedMessage(Adafruit_SSD1306& display,
+                               DontTryVisualState& state,
+                               unsigned long now) {
+  if (state.led_on) {
+    state.led_on = false;
+    digitalWrite(LedAlarmPin, LOW);
+    digitalWrite(OnLEDPin, HIGH);
+  }
+  display.clearDisplay();
+  static const char* const kSavedLines[] = {
+      "You saved the scanner", "congratulations"};
+  DrawCenteredLines(display, kSavedLines,
+                    sizeof(kSavedLines) / sizeof(kSavedLines[0]), 1);
+  if ((now - state.phase_start_ms) >= kDontTrySavedMessageDurationMs) {
+    state.phase = DontTryPhase::Done;
+    state.phase_start_ms = now;
+  }
+}
+
+void DontTryRenderTimeoutMessage(Adafruit_SSD1306& display,
+                                 DontTryVisualState& state,
+                                 unsigned long now) {
+  if (state.led_on) {
+    state.led_on = false;
+    digitalWrite(LedAlarmPin, LOW);
+    digitalWrite(OnLEDPin, HIGH);
+  }
+  display.clearDisplay();
+  static const char* const kTimeoutLines[] = {
+      "Siemens Team arrived", "and saved", "the scanner"};
+  DrawCenteredLines(display, kTimeoutLines,
+                    sizeof(kTimeoutLines) / sizeof(kTimeoutLines[0]), 1);
+  if ((now - state.phase_start_ms) >= kDontTryTimeoutMessageDurationMs) {
+    state.phase = DontTryPhase::Done;
+    state.phase_start_ms = now;
+  }
+}
+
+void DontTryRenderDone(Adafruit_SSD1306& display,
+                       DontTryVisualState& state,
+                       unsigned long now) {
+  (void)state;
+  (void)now;
+  display.clearDisplay();
 }
 
 void DontTryRender(Adafruit_SSD1306& display, void* context) {
@@ -669,6 +754,18 @@ void DontTryRender(Adafruit_SSD1306& display, void* context) {
       break;
     case DontTryPhase::FinalMessage:
       DontTryRenderFinal(display, *state, now);
+      break;
+    case DontTryPhase::DistinguishFire:
+      DontTryRenderDistinguish(display, *state, now);
+      break;
+    case DontTryPhase::SavedMessage:
+      DontTryRenderSavedMessage(display, *state, now);
+      break;
+    case DontTryPhase::TimeoutMessage:
+      DontTryRenderTimeoutMessage(display, *state, now);
+      break;
+    case DontTryPhase::Done:
+      DontTryRenderDone(display, *state, now);
       break;
   }
 }
@@ -1036,6 +1133,13 @@ void ServiceSequencePlayback() {
   }
 
   if (ButtonPressed(ButEnter, g_buttonEnterState)) {
+    if (g_sequencePlayer.active_sequence == &kDontTrySequence &&
+        g_sequencePlayer.visuals_active &&
+        g_dontTryVisualState.phase == DontTryPhase::DistinguishFire) {
+      g_dontTryVisualState.phase = DontTryPhase::SavedMessage;
+      g_dontTryVisualState.phase_start_ms = millis();
+      return;
+    }
     Serial.println(F("[SEQ] Sequence canceled"));
     WavPwmStopAudio();
     ResetSequencePlayer();
@@ -1050,6 +1154,18 @@ void ServiceSequencePlayback() {
   if (!sequence) {
     ResetSequencePlayer();
     return;
+  }
+
+  const bool sequence_finished =
+      (g_sequencePlayer.clip_index + 1 >= sequence->length);
+  if (sequence == &kDontTrySequence && g_sequencePlayer.visuals_active) {
+    if (sequence_finished) {
+      if (g_dontTryVisualState.phase != DontTryPhase::Done) {
+        return;
+      }
+      ResetSequencePlayer();
+      return;
+    }
   }
 
   g_sequencePlayer.clip_index++;
