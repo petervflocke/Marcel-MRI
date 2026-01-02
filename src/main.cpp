@@ -45,18 +45,21 @@ S15_WAV, // 11
 S16_WAV, // 12
 S17_WAV, // 13
 alarm_WAV,// 14
-evacuate_WAV // 15
+evacuate_WAV, // 15
+EPSI01_WAV, // 16
+EPSI02_WAV, // 17
+EPSI03_WAV // 18
 };
 #endif
 
 constexpr uint8_t kDiagnosticClipIndexes[] = {
-  0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 11, 12, 12, 13, 13};
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 13};  
 constexpr uint8_t kFirstTryClipIndexes[] = {
-  7, 5, 6, 6, 6, 12, 13, 13, 13, 8};
+  16, 17, 17, 17, 17, 17, 18};
 constexpr uint8_t kSecondTryClipIndexes[] = {
-  0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 10};
+  0, 0, 0, 0, 5, 6, 6, 6, 9, 9, 9, 9, 11, 11, 11, 11};
 constexpr uint8_t kDontTryClipIndexes[] = {
-  12, 13, 11, 10, 4, 10, 4, 10, 14, 14, 14, 0, 15, 0, 15, 0, 15, 0};
+  16, 17, 17, 17, 17, 18,  16, 17, 17, 17, 17, 18, 14, 14, 14, 15, 15, 15};
 constexpr uint8_t kRelaxClipIndexes[] = {};
 
 
@@ -80,11 +83,11 @@ struct AudioSequence {
 OledDisplay g_oledDisplay;
 
 const char* const kMenuItems[] = {
-  " Diagnostics",
-  " 1st try    ",
-  " 2nd try    ",
-  " Don't try  ",
-  " Relex      "
+  " Localizer " , // Diagnostic
+  " Debug Code",  // 1st
+  " rEPSI     ",  // 2nd
+  " rEPSI, more averages", //dont
+  " Relex     "
 };
 
 OledMenu g_mainMenu{
@@ -461,21 +464,21 @@ const SequenceVisuals kSecondTryVisuals{
   SecondTryImageStop,
 };
 
-constexpr unsigned long kDontTryStripeIntervalMs = 510;
+constexpr unsigned long kDontTryStripeIntervalMs = 800;
 constexpr int kDontTryImageWidthPx = 64;
 constexpr int kDontTryImageHeightPx = 64;
-constexpr int kDontTryStripeHeightPx = 4;
+constexpr int kDontTryStripeHeightPx = 2;
 constexpr size_t kDontTryStripeCount =
     kDontTryImageHeightPx / kDontTryStripeHeightPx;
 constexpr size_t kDontTryStripeCutoff = kDontTryStripeCount / 2;
 constexpr size_t kDontTryBytesPerRow =
     (kDontTryImageWidthPx + 7) / 8;
 constexpr unsigned long kDontTryFlashIntervalMs = 250;
-constexpr unsigned long kDontTryPostScanDelayMs = 4500;
-constexpr unsigned long kDontTryLedFlashIntervalMs = 100;
-constexpr unsigned long kDontTryLedFlashDurationMs = 6000;
+constexpr unsigned long kDontTryPostScanDelayMs = 6000;
+constexpr unsigned long kDontTryLedFlashDurationMs = 4500;
 constexpr unsigned long kDontTryFlashDurationMs = 4000;
 constexpr unsigned long kDontTryFinalDisplayDurationMs = 3000;
+constexpr unsigned long kDontTryLedFlashIntervalMs = 100;
 
 enum class DontTryPhase : uint8_t {
   Loading,
@@ -1072,20 +1075,20 @@ void HandleMenuSelection(size_t index) {
 
   switch (index) {
     case 0:
-      Serial.println(F("[MENU] Running diagnostics"));
-      if (!StartSequencePlayback(kDiagnosticSequence)) {
+      Serial.println(F("[MENU] Localizer"));
+      if (!StartSequencePlayback(kSecondTrySequence)) {
         Serial.println(F("[MENU] Failed to start diagnostics sequence"));
       }
       break;
     case 1:
-      Serial.println(F("[MENU] 1st try selected"));
-      if (!StartSequencePlayback(kFirstTrySequence)) {
+      Serial.println(F("[MENU] Debug Code"));
+      if (!StartSequencePlayback(kDiagnosticSequence)) {
         Serial.println(F("[MENU] Failed to start 1st try sequence"));
       }
       break;
     case 2:
-      Serial.println(F("[MENU] 2nd try selected"));
-      if (!StartSequencePlayback(kSecondTrySequence)) {
+      Serial.println(F("[MENU] rEPSI"));
+      if (!StartSequencePlayback(kFirstTrySequence)) {
         Serial.println(F("[MENU] Failed to start 2nd try sequence"));
       }
       break;
