@@ -15,6 +15,44 @@ and a hidden dino game. Built for a Waveshare RP2040 Zero using PlatformIO.
 - "Relax" mode launches a Dino-style game on the OLED.
 - Button-only UI (scroll/select and game controls).
 
+## How it works
+
+### Audio playback (DMA + PWM)
+
+Audio clips are stored as 16-bit PWM levels in `src/WAVData.h`. The first two
+16-bit words encode the 32-bit sample count; the rest are raw PWM values.
+`src/WavPwmAudio.cpp` configures a PWM slice for the target sample rate, then a
+DMA channel feeds samples into the PWM compare register at the PWM DREQ rate.
+The CPU only starts/stops playback and checks whether the DMA channel is still
+busy, so audio runs in the background. Note: the original WAVs are standard
+mono 16-bit PCM; they are converted by the `wav2pwm` tools into PWM duty values
+before being stored in `src/WAVData.h`.
+
+### Main loop (non-blocking service loop)
+
+The `loop()` function keeps everything responsive by calling short service
+functions every frame:
+
+- `ServiceDisplay()` updates the OLED at a fixed cadence and drives custom
+  renderers for animations.
+- `ServiceSequencePlayback()` advances audio sequences and handles the Enter
+  cancel logic.
+- `HandleMenuButtons()` debounces buttons and updates the menu selection.
+- `ServiceLedFx()` advances the WS2812 palette animation.
+
+No `delay()` calls are used in the loop, so audio playback, LED effects, and
+OLED animations can run concurrently. Most visuals are simple time-based state
+machines driven by `millis()` timers. The one intentional blocking call is the
+Dino game (`DinoGame::Run()`), which takes over the UI until the player exits.
+
+### Sequences, visuals, and LEDs
+
+`AudioSequence` ties together a list of clip indices with optional visuals and
+an LED palette. Each visual implements a start/stop hook and a render callback
+(e.g., the diagnostics scroll, the dial animation, the image stripe wipe, or the
+multi-phase alarm flow). WS2812 updates are handled by a short PIO program and a
+palette stepper in `ServiceLedFx()`.
+
 ## Hardware
 
 - Board: Waveshare RP2040 Zero (Earle Philhower Arduino core).
@@ -91,8 +129,7 @@ The OLED I2C pins can be overridden via `platformio.ini` build flags
 
 ### Audio clips
 
-Audio clips are stored as PWM-friendly arrays in `src/WAVData.h` (or
-`src/WAVData2.h` when `-DUSE_WAVDATA2` is enabled).
+Audio clips are stored as PWM-friendly arrays in `src/WAVData.h`.
 
 Note: audio assets are generated locally using the scripts in `wav2pwm`.
 
@@ -112,4 +149,3 @@ OLED bitmaps live in `src/PICsData.h` and are generated from the BMPs in
 - `src/WavPwmAudio.*` and `wav2pwm/WavConverter.*` are based on work by
   Jason Birch (see headers for license details).
 - The Dino game is refactored from https://github.com/tech-nickk/Chrome-Dino-Game-on-Arduino-and-OLED-/tree/master
-
