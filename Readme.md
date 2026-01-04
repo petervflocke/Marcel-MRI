@@ -149,7 +149,7 @@ suited for the SSD1306 128x64 OLED.
 ## Repo Layout
 
 - `src/`: firmware source, OLED UI, audio playback, Dino game.
-- `wav2pwm/`: audio conversion tools, WAV sources, generated headers (not sync due toi the size).
+- `wav2pwm/`: audio conversion tools, WAV sources, generated headers (not sync due to the size).
 - `pics/`: bitmap sources and conversion scripts.
 
 ## Credits and Notes
