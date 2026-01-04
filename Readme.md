@@ -96,6 +96,12 @@ Menu mapping (see `src/main.cpp`):
 - rEPSI, more averages: runs the alarm "don't try" sequence.
 - Relax: launches the Dino game on the OLED.
 
+Note on naming: these menu labels were adapted later to fit the Marcel MRI Lab
+story/D&D plot, while the underlying sequence names and code structure kept the
+original development labels. So the menu text and the function/sequence names
+don’t line up 1:1. It’s a bit inconsistent, but intentional and sufficient for
+this prop build.
+
 In the Dino game:
 
 - Enter: jump.
