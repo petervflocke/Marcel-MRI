@@ -136,7 +136,9 @@ Note: audio assets are generated locally using the scripts in `wav2pwm`.
 ### Bitmap images
 
 OLED bitmaps live in `src/PICsData.h` and are generated from the BMPs in
-`pics/` 
+`pics/`. For this build, BMPs were converted to C headers using
+https://lcd-image-converter.riuson.com/en/about/ with a monochrome preset
+suited for the SSD1306 128x64 OLED.
 
 ## Repo Layout
 
